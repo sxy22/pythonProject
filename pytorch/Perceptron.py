@@ -3,10 +3,12 @@
 
 """
 @Project: pythonProject
-@File   : softmax.py
+@File   : Perceptron.py
 @Author : 91317
 @Time   : 2021/2/28 
 """
+import time
+
 import torchvision
 import torchvision.transforms as transforms
 from torch.nn import init
@@ -16,19 +18,11 @@ import random
 import torch.nn as nn
 import torch.utils.data as Data
 
-
-
-class LinearNet(nn.Module):
-    def __init__(self, num_inputs, num_outputs):
-        super(LinearNet, self).__init__()
-        self.linear = nn.Linear(num_inputs, num_outputs)
-    def forward(self, x): # x shape: (batch, 1, 28, 28)
-        y = self.linear(x.view(x.shape[0], -1))
-        return y
-
 def evaluate_accuracy(data_iter, net):
     acc_sum, n = 0.0, 0
     for X, y in data_iter:
+        X = X.to(device)
+        y = y.to(device)
         acc_sum += (net(X).argmax(dim=1) == y).float().sum().item()
         n += y.shape[0]
     return acc_sum / n
@@ -46,24 +40,40 @@ def get_data_iter():
     test_iter = Data.DataLoader(mnist_test, batch_size=batch_size, shuffle=False, num_workers=num_workers)
     return train_iter, test_iter
 
-if __name__ == '__main__':
-    # 读取数据
-    train_iter, test_iter = get_data_iter()
 
-    # 输入输出维度
-    num_inputs = 784
-    num_outputs = 10
-    # 初始化
-    net = LinearNet(num_inputs, num_outputs)
-    init.normal_(net.linear.weight, mean=0, std=0.1)
-    init.constant_(net.linear.bias, val=0)
+class Net(nn.Module):
+    def __init__(self, num_inputs, num_outputs, num_hiddens):
+        super(Net, self).__init__()
+        self.linear_1 = nn.Linear(num_inputs, num_hiddens)
+        self.ReLU = nn.ReLU()
+        self.linear_2 = nn.Linear(num_hiddens, num_outputs)
+
+    def forward(self, x):  # x shape: (batch, 1, 28, 28)
+        y = x.view(x.shape[0], -1)
+        y = self.linear_1(y)
+        y = self.ReLU(y)
+        y = self.linear_2(y)
+        return y
+
+if __name__ == '__main__':
+    num_inputs, num_outputs, num_hiddens = 784, 10, 256
+    net = Net(num_inputs, num_outputs, num_hiddens)
+    for params in net.parameters():
+        init.normal_(params, mean=0, std=0.1)
     loss = nn.CrossEntropyLoss()
-    optimizer = torch.optim.SGD(net.parameters(), lr=0.1)
-    # 训练
+    optimizer = torch.optim.SGD(net.parameters(), lr=0.5)
+    train_iter, test_iter = get_data_iter()
     num_epochs = 5
+    # cuda
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    net.to(device)
+
+    start = time.time()
     for epoch in range(num_epochs):
         train_l_sum, train_acc_sum, n = 0.0, 0.0, 0
         for X, y in train_iter:
+            X = X.to(device)
+            y = y.to(device)
             y_hat = net(X)
             l = loss(y_hat, y).sum()
             # 梯度清零
@@ -78,3 +88,5 @@ if __name__ == '__main__':
         test_acc = evaluate_accuracy(test_iter, net)
         print('epoch %d, loss %.4f, train acc %.3f, test acc %.3f'
               % (epoch + 1, train_l_sum / n, train_acc_sum / n, test_acc))
+
+    print(time.time() - start)
